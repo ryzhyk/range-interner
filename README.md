@@ -1,4 +1,4 @@
-![Rust](https://github.com/ryzhyk/arc-interner/workflows/Rust/badge.svg)
+![Rust](https://github.com/ryzhyk/range-interner/workflows/Rust/badge.svg)
 
 # An interner that deallocates unused values.
 
