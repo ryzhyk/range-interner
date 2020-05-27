@@ -1,16 +1,15 @@
 [package]
-name = "arc-interner"
-description = "An interner that deallocates unused values"
-homepage = "https://github.com/ryzhyk/arc-interner"
-version = "0.4.1"
-authors = ["Leonid Ryzhyk <lryzhyk@vmware.com>", "Alex Hornby <alex@hornby.org.uk>"]
+name = "range-interner"
+description = "Map arbitrary values into a specified range."
+homepage = "https://github.com/ryzhyk/range-interner"
+version = "0.1.0"
+authors = ["Leonid Ryzhyk <lryzhyk@vmware.com>"]
 edition = "2018"
 license = "MIT"
-repository = "https://github.com/ryzhyk/arc-interner"
+repository = "https://github.com/ryzhyk/range-interner"
 readme = "README.md"
-keywords = ["intern", "interner", "interning"]
+keywords = ["intern", "interner", "interning", "range allocator"]
 
 [dependencies]
-dashmap = "3.11"
-once_cell = "1.3"
-serde = "1.0"
+range-alloc="0.1"
+num-traits="0.2"
