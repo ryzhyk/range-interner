@@ -16,7 +16,20 @@ use std::ops::Sub;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-struct RangeInternerInner<K, V> {
+pub trait RangeInternerKey: Eq + Hash + Send + Sync {}
+pub trait RangeInternerVal<V>: Clone + Copy + Add<Output=V> + AddAssign + Sub<Output=V> + Eq + PartialOrd + Debug + One 
+{}
+
+impl <T> RangeInternerKey for T
+where
+T: Eq + Hash + Send + Sync {}
+
+impl <T> RangeInternerVal<T> for T
+where
+T: Clone + Copy + Add<Output=T> + AddAssign + Sub<Output=T> + Eq + PartialOrd + Debug + One
+{}
+
+pub struct RangeInternerInner<K, V> {
     name: String,
     interner: HashMap<Arc<K>, Option<V>>,
     allocator: RangeAllocator<V>,
@@ -41,10 +54,27 @@ impl<K, V> Clone for RangeInterner<K, V> {
     }
 }
 
+impl<K, V> PartialEq for RangeInterner<K,V> {
+    fn eq(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.inner, &other.inner)
+    } 
+}
+impl<K, V> Eq for RangeInterner<K,V> {}
+
+impl<K, V> RangeInterner<K, V>
+{
+    pub fn inner(&self) -> &Arc<Mutex<RangeInternerInner<K, V>>> {
+        &self.inner
+    }
+    pub fn name(&self) -> String {
+        self.inner.lock().unwrap().name.clone()
+    }
+}
+
 impl<K, V> RangeInterner<K, V>
 where
-    K: Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey,
+    V: RangeInternerVal<V>,
 {
     pub fn new(name: &str, range: Range<V>) -> Self {
         RangeInterner {
@@ -87,8 +117,8 @@ where
 #[derive(Clone, Debug)]
 pub struct RangeIntern<K, V>
 where
-    K: Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey,
+    V: RangeInternerVal<V>,
 {
     k: Arc<K>,
     v: Option<V>,
@@ -97,25 +127,33 @@ where
 
 impl<K, V> RangeIntern<K, V>
 where
-    K: Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey,
+    V: RangeInternerVal<V>,
 {
     /// Return the number of references for this value.
     pub fn refcount(&self) -> usize {
-        // One reference is held by the hashset; we return the number of
+        // One reference is held by the hashmap; we return the number of
         // references held by actual clients.
         Arc::strong_count(&self.k) - 1
+    }
+
+    pub fn key(&self) -> &K {
+        &*self.k
     }
 
     pub fn val(&self) -> Option<V> {
         self.v
     }
+
+    pub fn interner(&self) -> &RangeInterner<K,V> {
+        &self.interner
+    }
 }
 
 impl<K, V> Drop for RangeIntern<K, V>
 where
-    K: Eq + Hash + Send + Sync,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey,
+    V: RangeInternerVal<V>,
 {
     fn drop(&mut self) {
         let mut interner = self.interner.inner.lock().unwrap();
@@ -133,8 +171,8 @@ where
 
 impl<K, V> AsRef<K> for RangeIntern<K, V>
 where
-    K: Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey,
+    V: RangeInternerVal<V>,
 {
     fn as_ref(&self) -> &K {
         self.k.as_ref()
@@ -143,8 +181,8 @@ where
 
 impl<K, V> Borrow<K> for RangeIntern<K, V>
 where
-    K: Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey,
+    V: RangeInternerVal<V>,
 {
     fn borrow(&self) -> &K {
         self.as_ref()
@@ -152,8 +190,8 @@ where
 }
 impl<K, V> Deref for RangeIntern<K, V>
 where
-    K: Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey,
+    V: RangeInternerVal<V>,
 {
     type Target = K;
     fn deref(&self) -> &K {
@@ -168,8 +206,8 @@ where
 /// hash of the pointer with hash of the data itself.
 impl<K, V> Hash for RangeIntern<K, V>
 where
-    K: Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey,
+    V: RangeInternerVal<V>,
 {
     fn hash<H: Hasher>(&self, state: &mut H) {
         Arc::into_raw(self.k.clone()).hash(state);
@@ -179,8 +217,8 @@ where
 /// Efficiently compares two interned values by comparing their pointers.
 impl<K, V> PartialEq for RangeIntern<K, V>
 where
-    K: Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey,
+    V: RangeInternerVal<V>,
 {
     fn eq(&self, other: &RangeIntern<K, V>) -> bool {
         Arc::ptr_eq(&self.k, &other.k)
@@ -189,15 +227,15 @@ where
 
 impl<K, V> Eq for RangeIntern<K, V>
 where
-    K: Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey,
+    V: RangeInternerVal<V>,
 {
 }
 
 impl<K, V> PartialOrd for RangeIntern<K, V>
 where
-    K: PartialOrd + Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey + PartialOrd,
+    V: RangeInternerVal<V>,
 {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.as_ref().partial_cmp(other)
@@ -218,8 +256,8 @@ where
 
 impl<K, V> Ord for RangeIntern<K, V>
 where
-    K: Ord + Eq + Hash + Send + Sync + 'static,
-    V: Clone + Copy + Add<Output = V> + AddAssign + Sub<Output = V> + Eq + PartialOrd + Debug + One,
+    K: RangeInternerKey + Ord,
+    V: RangeInternerVal<V>,
 {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.as_ref().cmp(other)
